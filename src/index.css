@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    font-family: 'Inter', 'Noto Sans Devanagari', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-agri-600 text-white font-semibold py-3 px-6 rounded-xl shadow-md 
+           hover:bg-agri-700 active:scale-95 transition-all duration-150 
+           text-base select-none touch-manipulation;
+  }
+  .btn-secondary {
+    @apply bg-highway-600 text-white font-semibold py-3 px-6 rounded-xl shadow-md 
+           hover:bg-highway-700 active:scale-95 transition-all duration-150 
+           text-base select-none touch-manipulation;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100 p-4 
+           transition-shadow hover:shadow-md;
+  }
+  .badge-green {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs 
+           font-semibold bg-green-100 text-green-800;
+  }
+  .badge-orange {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs 
+           font-semibold bg-orange-100 text-orange-800;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Print Styles for Digital Pakki Pavti */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #printable-pavti-modal,
+  #printable-pavti-modal * {
+    visibility: visible;
+  }
+  #printable-pavti-modal {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 1.5cm;
+    background: white !important;
+    overflow: visible;
+    z-index: 99999;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

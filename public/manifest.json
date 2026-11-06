@@ -1,0 +1,67 @@
+{
+  "name": "आपली मंडी (Aapli Mandi) — FreshRoute",
+  "short_name": "आपली मंडी",
+  "description": "शिवार ते मार्केट यार्ड — अवघ्या ६ ते १० तासांत १००% ग्रेडिंग केलेला ताजा शेतमाल थेट शेतकरी ते व्यापारी",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#15803d",
+  "categories": [
+    "business",
+    "shopping",
+    "logistics",
+    "agriculture"
+  ],
+  "lang": "mr",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/maskable-icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "शेतकरी पॅनेल (Farmer App)",
+      "short_name": "शेतकरी",
+      "description": "आजचे हमीभाव व गाडी बुकिंग",
+      "url": "/?role=farmer",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "व्यापारी पॅनेल (Wholesaler B2B)",
+      "short_name": "व्यापारी",
+      "description": "ताजा A-ग्रेड माल प्री-ऑर्डर",
+      "url": "/?role=wholesaler",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "गाडी ट्रॅकिंग (Logistics Hub)",
+      "short_name": "गाडी ट्रॅकिंग",
+      "description": "लाइव्ह हायवे एक्सप्रेस ट्रॅकिंग",
+      "url": "/?role=logistics",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}
