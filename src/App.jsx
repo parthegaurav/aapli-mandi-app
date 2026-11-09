@@ -8,6 +8,7 @@ import WholesalerView from './components/WholesalerView.jsx';
 import AdminView from './components/AdminView.jsx';
 import WhatsAppFloatingButton from './components/WhatsAppFloatingButton.jsx';
 import { crops } from './data/crops.js';
+import { fetchProducts } from './services/supabase.js';
 
 function App() {
   const { user, logout } = useAuth();
@@ -44,16 +45,15 @@ function App() {
     navigateToLogin();
   }, [logout, navigateToLogin]);
 
-  // Fetch crops from API
+  // Fetch crops directly from Supabase (with fallback)
   const fetchCrops = useCallback(async () => {
     try {
-      const res = await fetch('/api/products?all=true');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.length > 0) setCropsList(data);
+      const data = await fetchProducts({ includeAll: true });
+      if (Array.isArray(data) && data.length > 0) {
+        setCropsList(data);
       }
     } catch (err) {
-      console.log('Using fallback crops data:', err);
+      console.warn('Using fallback crops data:', err);
     }
   }, []);
 

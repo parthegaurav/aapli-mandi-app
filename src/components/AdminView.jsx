@@ -21,6 +21,18 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { t } from '../data/i18n.js';
+import {
+  fetchStats,
+  fetchFarmerBookings,
+  fetchWholesalerOrders,
+  saveSingleProductRate,
+  batchUpdateProductRates,
+  toggleProductActive,
+  deleteProduct,
+  addProduct,
+  updateFarmerBookingStatus,
+  updateWholesalerOrderStatus,
+} from '../services/supabase.js';
 
 export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, activeTab = 'rates', setActiveTab }) {
   const [activeSubTab, setActiveSubTab] = useState('rates'); // 'rates' | 'addProduct' | 'orders'
@@ -94,14 +106,11 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
     setRateEdits(initialEdits);
   }, [crops]);
 
-  // Fetch stats & orders
-  const fetchStats = async () => {
+  // Fetch stats & orders directly from Supabase (with fallback)
+  const loadStats = async () => {
     try {
-      const res = await fetch('/api/stats');
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
-      }
+      const data = await fetchStats();
+      if (data) setStats(data);
     } catch (err) {
       console.error('Failed to load stats:', err);
     }
@@ -110,20 +119,14 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
   const fetchBookingsAndOrders = async () => {
     setLoadingOrders(true);
     try {
-      const [farmersRes, wholesalersRes] = await Promise.all([
-        fetch('/api/farmer-bookings'),
-        fetch('/api/wholesaler-orders')
+      const [farmers, wholesalers] = await Promise.all([
+        fetchFarmerBookings(),
+        fetchWholesalerOrders(),
       ]);
 
-      if (farmersRes.ok) {
-        const data = await farmersRes.json();
-        setFarmerBookings(data);
-      }
-      if (wholesalersRes.ok) {
-        const data = await wholesalersRes.json();
-        setWholesalerOrders(data);
-      }
-      fetchStats();
+      setFarmerBookings(farmers || []);
+      setWholesalerOrders(wholesalers || []);
+      loadStats();
     } catch (err) {
       console.error('Failed to fetch bookings/orders:', err);
     } finally {
@@ -132,7 +135,7 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
   };
 
   useEffect(() => {
-    fetchStats();
+    loadStats();
     if (activeSubTab === 'orders') {
       fetchBookingsAndOrders();
     }
@@ -155,16 +158,10 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
     if (!edits) return;
 
     try {
-      const res = await fetch(`/api/products/${cropId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          farmer_rate_per_kg: Number(edits.farmer_rate_per_kg),
-          wholesaler_rate_per_crate: Number(edits.wholesaler_rate_per_crate),
-        }),
+      await saveSingleProductRate(cropId, {
+        farmer_rate_per_kg: Number(edits.farmer_rate_per_kg),
+        wholesaler_rate_per_crate: Number(edits.wholesaler_rate_per_crate),
       });
-
-      if (!res.ok) throw new Error('Update failed');
 
       setSaveStatus({
         type: 'success',
@@ -174,7 +171,7 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
       });
 
       if (onCropsUpdated) onCropsUpdated();
-      fetchStats();
+      loadStats();
 
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
@@ -195,23 +192,17 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
         wholesaler_rate_per_crate: Number(edit.wholesaler_rate_per_crate),
       }));
 
-      const res = await fetch('/api/products/batch-rates', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates }),
-      });
-
-      if (!res.ok) throw new Error('Bulk update failed');
+      await batchUpdateProductRates(updates);
 
       setSaveStatus({
         type: 'success',
         message: lang === 'mr'
           ? 'सर्व आजचे भाव यशस्वीरीत्या डेटाबेसमध्ये सेव्ह झाले!'
-          : 'All daily rates successfully updated in SQLite database!'
+          : 'All daily rates successfully updated in Supabase database!'
       });
 
       if (onCropsUpdated) onCropsUpdated();
-      fetchStats();
+      loadStats();
       setTimeout(() => setSaveStatus(null), 3500);
     } catch (err) {
       setSaveStatus({
@@ -226,13 +217,10 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
   // Toggle Crop Active / Disabled
   const handleToggleProductActive = async (cropId) => {
     try {
-      const res = await fetch(`/api/products/${cropId}/toggle`, {
-        method: 'PATCH',
-      });
-      if (res.ok) {
-        if (onCropsUpdated) onCropsUpdated();
-        fetchStats();
-      }
+      const crop = crops.find((c) => String(c.id) === String(cropId));
+      await toggleProductActive(cropId, crop ? Boolean(crop.is_active || crop.isActive) : true);
+      if (onCropsUpdated) onCropsUpdated();
+      loadStats();
     } catch (err) {
       console.error('Failed to toggle product status:', err);
     }
@@ -247,13 +235,9 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
     if (!window.confirm(confirmMsg)) return;
 
     try {
-      const res = await fetch(`/api/products/${cropId}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        if (onCropsUpdated) onCropsUpdated();
-        fetchStats();
-      }
+      await deleteProduct(cropId);
+      if (onCropsUpdated) onCropsUpdated();
+      loadStats();
     } catch (err) {
       console.error('Failed to delete product:', err);
     }
@@ -274,16 +258,7 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
     setProductFeedback(null);
 
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProduct),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Failed to add product');
-      }
+      await addProduct(newProduct);
 
       setProductFeedback({
         type: 'success',
@@ -307,7 +282,7 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
       });
 
       if (onCropsUpdated) onCropsUpdated();
-      fetchStats();
+      loadStats();
       setTimeout(() => setProductFeedback(null), 4000);
     } catch (err) {
       setProductFeedback({
@@ -323,18 +298,11 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
   const handleFarmerStatusChange = async (bookingId, newStatus) => {
     setStatusUpdatingId(bookingId);
     try {
-      const res = await fetch(`/api/farmer-bookings/${bookingId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (res.ok) {
-        setFarmerBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b))
-        );
-        fetchStats();
-      }
+      await updateFarmerBookingStatus(bookingId, newStatus);
+      setFarmerBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b))
+      );
+      loadStats();
     } catch (err) {
       console.error('Failed to update booking status:', err);
     } finally {
@@ -346,18 +314,11 @@ export default function AdminView({ lang = 'mr', crops = [], onCropsUpdated, act
   const handleWholesalerStatusChange = async (orderId, newStatus) => {
     setStatusUpdatingId(orderId);
     try {
-      const res = await fetch(`/api/wholesaler-orders/${orderId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ delivery_status: newStatus }),
-      });
-
-      if (res.ok) {
-        setWholesalerOrders((prev) =>
-          prev.map((o) => (o.id === orderId ? { ...o, delivery_status: newStatus } : o))
-        );
-        fetchStats();
-      }
+      await updateWholesalerOrderStatus(orderId, newStatus);
+      setWholesalerOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, delivery_status: newStatus, order_status: newStatus } : o))
+      );
+      loadStats();
     } catch (err) {
       console.error('Failed to update order status:', err);
     } finally {

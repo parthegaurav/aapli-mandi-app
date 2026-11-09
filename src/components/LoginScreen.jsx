@@ -516,9 +516,9 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess, onBack }) {
                   {t(lang, 'phoneNumber')} *
                 </label>
                 <div className="relative">
-                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-slate-400">
-                    <Phone className="w-4 h-4" />
-                    <span className="text-xs font-bold text-slate-600">+91</span>
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-slate-400 border-r border-slate-200 pr-2 pointer-events-none">
+                    <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span className="text-xs font-bold text-slate-700 font-mono">+91</span>
                   </div>
                   <input
                     type="tel"
@@ -528,7 +528,7 @@ export default function LoginScreen({ lang, setLang, onLoginSuccess, onBack }) {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                     placeholder="98XXXXXXXX"
-                    className={`w-full pl-18 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 tracking-wider focus:bg-white focus:outline-none focus:ring-2 ${currentTheme.ringColor} transition-all min-h-[44px]`}
+                    className={`w-full pl-[78px] pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 tracking-wider focus:bg-white focus:outline-none focus:ring-2 ${currentTheme.ringColor} transition-all min-h-[44px]`}
                   />
                 </div>
               </div>

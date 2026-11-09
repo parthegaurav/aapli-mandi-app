@@ -22,6 +22,7 @@ import {
 import { t } from '../data/i18n.js';
 import { crops, locations, generateSampleReceipts } from '../data/crops.js';
 import DigitalPavtiModal from './DigitalPavtiModal.jsx';
+import { fetchFarmerBookings, createFarmerBooking } from '../services/supabase.js';
 
 export default function FarmerView({ lang = 'mr', onBookingChange, crops: cropsProp, activeTab = 'rates', setActiveTab, user }) {
   const cropsList = cropsProp && cropsProp.length > 0 ? cropsProp : crops;
@@ -76,26 +77,23 @@ export default function FarmerView({ lang = 'mr', onBookingChange, crops: cropsP
   // Receipts state - loaded from API if available, falling back to samples
   const [receipts, setReceipts] = useState(() => generateSampleReceipts());
 
-  // Load receipts from SQLite backend - filtered by logged-in farmer
+  // Load receipts from Supabase / localStorage - filtered by logged-in farmer
   useEffect(() => {
-    const fetchUrl = user?.id ? `/api/farmer-bookings?farmer_id=${user.id}` : '/api/farmer-bookings';
-    fetch(fetchUrl)
-      .then((res) => (res.ok ? res.json() : null))
+    fetchFarmerBookings({ phone: user?.phone })
       .then((data) => {
         if (data && data.length > 0) {
-          // If no farmer_id filter on backend or returned all, filter client side by user name/phone
-          const relevant = user?.id
-            ? data
-            : (user ? data.filter((b) => b.farmer_name === (user.name || user.full_name) || b.phone === user.phone) : data);
+          const relevant = user?.phone
+            ? data.filter((b) => String(b.phone) === String(user.phone) || b.farmer_name === (user.name || user.full_name))
+            : data;
           const sourceList = relevant.length > 0 ? relevant : data;
 
           const mapped = sourceList.map((b) => {
-            const cropMatch = cropsList.find((c) => c.id === b.crop_id) || {
+            const cropMatch = cropsList.find((c) => String(c.id) === String(b.crop_id)) || {
               id: b.crop_id,
               emoji: '🥬',
               name: { mr: b.crop_name || 'शेतमाल', en: b.crop_name || 'Crop' },
-              cratePrice: Math.round(b.total_estimated_amount / (b.crates_count || 1)),
-              pricePerKg: Math.round(b.total_estimated_amount / ((b.crates_count || 1) * 20)),
+              cratePrice: Math.round(Number(b.total_estimated_amount || b.estimatedPayout) / (b.crates_count || 1)),
+              pricePerKg: Math.round(Number(b.total_estimated_amount || b.estimatedPayout) / ((b.crates_count || 1) * 20)),
             };
 
             const createdDate = b.created_at
@@ -107,17 +105,18 @@ export default function FarmerView({ lang = 'mr', onBookingChange, crops: cropsP
               : '15 Oct 2026';
 
             return {
-              id: b.id,
+              id: b.id || b.receipt_no,
+              receipt_no: b.receipt_no || b.id,
               farmerName: b.farmer_name,
               crop: cropMatch,
               crates: b.crates_count,
               bookedQty: b.crates_count,
               unit: 'crates',
-              totalAmount: b.total_estimated_amount,
+              totalAmount: b.total_estimated_amount || b.estimatedPayout,
               status: b.status === 'Weighed & Paid' || b.status === 'Paid' ? 'paid' : 'processing',
               tempoEta: b.tempo_eta || '35 min',
               date: createdDate,
-              pickupLocation: b.village,
+              pickupLocation: b.village || b.pickupLocation,
               pickupType: b.pickup_type,
             };
           });
@@ -245,28 +244,24 @@ export default function FarmerView({ lang = 'mr', onBookingChange, crops: cropsP
     setConfirmedBooking(newBookingReceipt);
     setActivePavti(newBookingReceipt);
 
-    // Persist to SQLite Backend
+    // Persist directly to Supabase (with localStorage fallback)
     try {
-      await fetch('/api/farmer-bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: receiptId,
-          farmer_id: user?.id || null,
-          farmer_name: newBookingReceipt.farmerName,
-          phone: user?.phone || '9822481092',
-          village: locationName,
-          crop_id: selectedCrop?.id || 'crop',
-          crop_name: selectedCrop?.name?.mr || 'शेतमाल',
-          crates_count: crateEquivalent,
-          pickup_type: pickupType === 'farmGate' ? 'बांधावरून' : 'संकलन केंद्र',
-          total_estimated_amount: estimatedPayout,
-          status: 'Pending',
-          tempo_eta: newBookingReceipt.tempoEta,
-        }),
+      await createFarmerBooking({
+        id: receiptId,
+        farmer_name: newBookingReceipt.farmerName,
+        phone: user?.phone || '9822481092',
+        village: locationName,
+        crop_id: selectedCrop?.id || 'crop',
+        crop_name: selectedCrop?.name?.mr || selectedCrop?.name?.en || 'शेतमाल',
+        crates_count: crateEquivalent,
+        pickup_type: pickupType === 'farmGate' ? 'थेट बांधावरून (Farm Gate)' : 'गाव संकलन केंद्र (Village Hub)',
+        total_estimated_amount: estimatedPayout,
+        ratePerKg: selectedCrop?.pricePerKg || 22,
+        status: 'नोंदणी झाली (Pending Pickup)',
+        tempo_eta: newBookingReceipt.tempoEta,
       });
     } catch (err) {
-      console.error('Failed to save farmer booking to database:', err);
+      console.error('Failed to save farmer booking:', err);
     }
   };
 

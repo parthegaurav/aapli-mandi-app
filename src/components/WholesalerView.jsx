@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { t } from '../data/i18n.js';
 import { crops, deliveryLocations, deliverySlots } from '../data/crops.js';
 import WholesaleInvoiceModal from './WholesaleInvoiceModal.jsx';
+import { fetchWholesalerOrders, createWholesalerOrder } from '../services/supabase.js';
 import {
   ShoppingCart,
   Plus,
@@ -22,6 +23,7 @@ import {
   Scale,
   ClipboardList,
   Search,
+  Sparkles,
 } from 'lucide-react';
 
 export default function WholesalerView({
@@ -49,6 +51,7 @@ export default function WholesalerView({
   const [addedToast, setAddedToast] = useState('');
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [customCropName, setCustomCropName] = useState('');
+  const [customNotes, setCustomNotes] = useState('');
 
   // Keep selected crop synced if cropsList changes
   useEffect(() => {
@@ -85,22 +88,17 @@ export default function WholesalerView({
 
   const fetchBuyerOrders = useCallback(async () => {
     try {
-      const url = user?.id ? `/api/wholesaler-orders?buyer_id=${user.id}` : '/api/wholesaler-orders';
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.length > 0) {
-          const relevant = user?.id
-            ? data
-            : (user?.firm_name
-                ? data.filter(
-                    (o) =>
-                      o.wholesaler_name.includes(user.firm_name) ||
-                      (user.name && o.wholesaler_name.includes(user.name))
-                  )
-                : data);
-          setBuyerOrders(relevant.length > 0 ? relevant : data);
-        }
+      const data = await fetchWholesalerOrders({ phone: user?.phone });
+      if (data && data.length > 0) {
+        const relevant = user?.phone
+          ? data.filter(
+              (o) =>
+                String(o.phone) === String(user.phone) ||
+                (user.firm_name && o.wholesaler_name.includes(user.firm_name)) ||
+                (user.name && o.wholesaler_name.includes(user.name))
+            )
+          : data;
+        setBuyerOrders(relevant.length > 0 ? relevant : data);
       }
     } catch (e) {
       console.log('Error fetching buyer orders:', e);
@@ -115,8 +113,20 @@ export default function WholesalerView({
   const addToCartWithRequirement = () => {
     if (isCustomMode) {
       if (!customCropName.trim()) return;
-      const weightKg = Number(reqWeightKg) || 20;
-      const qty = Math.max(1, Math.ceil(weightKg / 20));
+      let weightKg = 0;
+      let qty = 0;
+      const crateKg = 20;
+
+      if (unitMode === 'kg') {
+        weightKg = Number(reqWeightKg) || 20;
+        if (weightKg <= 0) return;
+        qty = Math.max(1, Math.ceil(weightKg / crateKg));
+      } else {
+        qty = Number(reqCrates) || 1;
+        if (qty <= 0) return;
+        weightKg = qty * crateKg;
+      }
+
       const estCratePrice = 500;
       const customId = `custom_${Date.now()}`;
       setCart((prev) => [
@@ -128,12 +138,14 @@ export default function WholesalerView({
           customCratePrice: estCratePrice,
           qty,
           weight_kg: weightKg,
+          notes: customNotes.trim(),
           isCustom: true,
         },
       ]);
       setAddedToast(`✓ विशेष मागणी: ${customCropName.trim()} (${weightKg} kg • ${qty} क्रेट) कार्टमध्ये जोडले!`);
       setTimeout(() => setAddedToast(''), 3500);
       setCustomCropName('');
+      setCustomNotes('');
       setIsCustomMode(false);
       return;
     }
@@ -282,33 +294,30 @@ export default function WholesalerView({
     setBuyerOrders((prev) => [newOrderObj, ...prev]);
     setShowOrderConfirm(true);
 
-    // Save to SQLite
+    // Save directly to Supabase (with localStorage fallback)
     try {
-      await fetch('/api/wholesaler-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: orderId,
-          buyer_id: user?.id || null,
-          wholesaler_name: newOrderObj.wholesaler_name,
-          shop_gala_no: newOrderObj.shop_gala_no,
-          market_yard: newOrderObj.market_yard,
-          crop_id: cart.length === 1 ? cart[0].cropId : 'mixed',
-          crop_name: cropSummary,
-          crates_ordered: totalCrates,
-          total_weight_kg: totalWeightKg,
-          total_amount: totalAmount,
-          delivery_status: 'Order Received',
-        }),
+      await createWholesalerOrder({
+        id: orderId,
+        wholesaler_name: newOrderObj.wholesaler_name,
+        shop_gala_no: newOrderObj.shop_gala_no,
+        market_yard: newOrderObj.market_yard,
+        phone: user?.phone || '9850001234',
+        crop_id: cart.length === 1 ? cart[0].cropId : 'mixed',
+        crop_name: cropSummary,
+        crates_ordered: totalCrates,
+        total_weight_kg: totalWeightKg,
+        total_amount: totalAmount,
+        delivery_slot: activeSlot?.label?.[lang] || activeSlot?.label?.mr || 'पहाटे ४:०० ते ६:०० (Early Morning Express)',
+        delivery_status: 'ऑर्डर स्वीकारली (Order Received)',
       });
     } catch (err) {
-      console.error('Failed to save wholesaler order to database:', err);
+      console.error('Failed to save wholesaler order:', err);
     }
   };
 
   return (
     <div className="space-y-5 pb-8">
-      {/* Top B2B Banner (Shown on Catalog & Cart) */}
+      {/* Top B2B Banner (Shown on Catalog & Cart) - Commented out
       {(activeTab === 'catalog' || activeTab === 'cart' || !activeTab) && (
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-orange-600 via-highway-600 to-amber-700 text-white p-5 shadow-lg">
           <div className="relative z-10 space-y-2.5">
@@ -342,6 +351,7 @@ export default function WholesalerView({
           </div>
         </div>
       )}
+      */}
 
       {/* ======================================================== */}
       {/* TAB 1: PLACE YOUR REQUIREMENT (तुमची ऑर्डर नोंदवा)       */}
@@ -405,21 +415,74 @@ export default function WholesalerView({
 
             {/* Custom Crop Input Mode */}
             {isCustomMode ? (
-              <div className="space-y-3 bg-orange-50/60 p-3.5 rounded-2xl border border-orange-200 animate-in fade-in">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-highway-900">
-                  <Sparkles className="w-4 h-4 text-highway-600" />
-                  <span>{lang === 'mr' ? 'विशेष किंवा इतर शेतमाल मागणी' : 'Custom / Unlisted Produce Requirement'}</span>
+              <div className="space-y-3 bg-gradient-to-br from-orange-50 via-amber-50/50 to-orange-50 p-4 rounded-2xl border-2 border-orange-300 shadow-sm animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-highway-900">
+                    <Sparkles className="w-4 h-4 text-highway-600 animate-pulse" />
+                    <span>{lang === 'mr' ? 'विशेष किंवा इतर शेतमाल मागणी (Custom Order)' : 'Custom / Unlisted Produce Order'}</span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-200 text-highway-900">
+                    {lang === 'mr' ? 'थेट बांधावरून संकलन' : 'Direct Farm Sourcing'}
+                  </span>
                 </div>
+
                 <div>
-                  <label className="text-xs font-semibold text-gray-700 block mb-1">
-                    {lang === 'mr' ? 'शेतमालाचे नाव (उदा. गाजर, शिमला मिरची, आले, कोथिंबीर):' : 'Produce Name (e.g. Carrot, Capsicum, Ginger):'}
+                  <label className="text-xs font-bold text-gray-800 block mb-1">
+                    {lang === 'mr' ? '१. शेतमालाचे नाव टाका:' : '1. Produce Name:'} *
                   </label>
                   <input
                     type="text"
+                    required
                     value={customCropName}
                     onChange={(e) => setCustomCropName(e.target.value)}
-                    placeholder={lang === 'mr' ? 'पिकाचे नाव येथे टाईप करा...' : 'Type produce name here...'}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-highway-500"
+                    placeholder={lang === 'mr' ? 'उदा. गाजर, शिमला मिरची, आले, लसूण, कोबी...' : 'e.g. Carrot, Capsicum, Ginger, Garlic...'}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-highway-400 text-sm font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-highway-500 shadow-2xs"
+                  />
+                </div>
+
+                {/* Quick Produce Suggestions */}
+                <div>
+                  <span className="text-[11px] font-semibold text-gray-500 block mb-1.5">
+                    {lang === 'mr' ? 'किंवा खालीलपैकी निवडा:' : 'Or tap a common produce:'}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { mr: 'गाजर', en: 'Carrot', emoji: '🥕' },
+                      { mr: 'शिमला मिरची', en: 'Capsicum', emoji: '🫑' },
+                      { mr: 'आले', en: 'Ginger', emoji: '🫚' },
+                      { mr: 'लसूण', en: 'Garlic', emoji: '🧄' },
+                      { mr: 'कोथिंबीर', en: 'Coriander', emoji: '🌿' },
+                      { mr: 'कोबी', en: 'Cabbage', emoji: '🥬' },
+                      { mr: 'फुलकोबी', en: 'Cauliflower', emoji: '🥦' },
+                      { mr: 'काकडी', en: 'Cucumber', emoji: '🥒' },
+                    ].map((sug) => (
+                      <button
+                        key={sug.en}
+                        type="button"
+                        onClick={() => setCustomCropName(lang === 'mr' ? sug.mr : sug.en)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer active:scale-95 ${
+                          customCropName === (lang === 'mr' ? sug.mr : sug.en)
+                            ? 'bg-highway-600 text-white border-highway-600 shadow-xs'
+                            : 'bg-white text-gray-700 border-orange-200 hover:bg-orange-100/70'
+                        }`}
+                      >
+                        {sug.emoji} {lang === 'mr' ? sug.mr : sug.en}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Optional Custom Notes */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 block mb-1">
+                    {lang === 'mr' ? 'विशिष्ट प्रतवारी / सूचना (ऐच्छिक):' : 'Quality / Packaging Notes (Optional):'}
+                  </label>
+                  <input
+                    type="text"
+                    value={customNotes}
+                    onChange={(e) => setCustomNotes(e.target.value)}
+                    placeholder={lang === 'mr' ? 'उदा. कच्चा माल, मध्यम आकार, विशेष पॅकिंग...' : 'e.g. Medium size, raw, specific packing...'}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-highway-500"
                   />
                 </div>
               </div>
@@ -524,6 +587,30 @@ export default function WholesalerView({
                       </div>
                       <span className="text-[11px] font-bold text-gray-700 bg-white px-2.5 py-1 rounded-xl border border-orange-200 shadow-2xs">
                         {selCrop.available} क्रेट स्टॉक
+                      </span>
+                    </div>
+                  )}
+
+                  {isCustomMode && (
+                    <div className="flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-orange-100/90 to-amber-100/90 border border-orange-300">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-3xl select-none">🥬</span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-black text-gray-900 text-sm sm:text-base">
+                              {customCropName.trim() || (lang === 'mr' ? 'विशेष शेतमाल मागणी' : 'Custom Produce')}
+                            </h3>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-200 text-highway-900 border border-orange-300">
+                              {lang === 'mr' ? 'विशेष मागणी' : 'Custom Request'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-700 font-medium">
+                            {lang === 'mr' ? 'अंदाजे दर: ₹२५/kg (₹५००/क्रेट • २०kg क्रेट)' : 'Est. rate: ₹25/kg (₹500/crate • 20kg crate)'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-bold text-highway-900 bg-white px-2.5 py-1 rounded-xl border border-orange-300 shadow-2xs">
+                        {lang === 'mr' ? 'थेट खरेदी' : 'On-Demand'}
                       </span>
                     </div>
                   )}
@@ -938,8 +1025,13 @@ export default function WholesalerView({
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className="text-2xl select-none">{crop.emoji}</span>
                             <div className="truncate">
-                              <h4 className="font-bold text-gray-900 text-xs sm:text-sm truncate">
+                              <h4 className="font-bold text-gray-900 text-xs sm:text-sm truncate flex items-center gap-1.5">
                                 {crop.name[lang] || crop.name.en}
+                                {item.isCustom && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-orange-100 text-highway-800 border border-orange-200">
+                                    {lang === 'mr' ? 'विशेष मागणी' : 'Custom'}
+                                  </span>
+                                )}
                               </h4>
                               <p className="text-[11px] text-gray-500">
                                 ₹{crop.cratePrice} × {item.qty} क्रेट ={' '}
@@ -947,6 +1039,11 @@ export default function WholesalerView({
                                   ₹{subtotal.toLocaleString('en-IN')}
                                 </span>
                               </p>
+                              {item.notes && (
+                                <p className="text-[10px] text-highway-700 italic truncate max-w-[200px]">
+                                  📝 {item.notes}
+                                </p>
+                              )}
                             </div>
                           </div>
 

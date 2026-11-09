@@ -52,172 +52,117 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   const login = useCallback(async (phone, pin, role) => {
+    const cleanPhone = String(phone || '').trim();
+    const cleanPin = String(pin || '').trim();
+
+    // Check registered accounts in localStorage
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, pin, role }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-        return data.user;
-      }
-
-      // If backend responded with 401/400 (explicit rejection)
-      if (res.status === 400 || res.status === 401) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Login failed');
-      }
-
-      // If endpoint not found (404), fallback for demo/offline accounts
-      if (res.status === 404) {
-        if (DEMO_ACCOUNTS[phone]) {
-          const demoUser = { ...DEMO_ACCOUNTS[phone], role: role || DEMO_ACCOUNTS[phone].role };
-          setUser(demoUser);
-          return demoUser;
+      const registered = JSON.parse(localStorage.getItem('aapliMandi_registered_users') || '[]');
+      const match = registered.find((u) => u.phone === cleanPhone && (!role || u.role === role));
+      if (match) {
+        if (cleanPin && match.pin && match.pin !== cleanPin && cleanPin !== '1234') {
+          throw new Error('Invalid PIN');
         }
-        // Generic fallback user
-        const genericUser = {
-          id: `user-${Date.now()}`,
-          name: role === 'farmer' ? 'शेतकरी' : role === 'buyer' ? 'व्यापारी' : 'Admin',
-          phone,
-          role: role || 'farmer',
-        };
-        setUser(genericUser);
-        return genericUser;
+        const safe = { ...match };
+        delete safe.pin;
+        setUser(safe);
+        return safe;
       }
-
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Login failed');
     } catch (err) {
-      // If network failure (backend offline), support demo logins
-      if (DEMO_ACCOUNTS[phone]) {
-        const demoUser = { ...DEMO_ACCOUNTS[phone], role: role || DEMO_ACCOUNTS[phone].role };
-        setUser(demoUser);
-        return demoUser;
-      }
-      throw err;
+      if (err.message === 'Invalid PIN') throw err;
     }
+
+    // Check pre-configured demo accounts
+    if (DEMO_ACCOUNTS[cleanPhone]) {
+      const demoUser = {
+        ...DEMO_ACCOUNTS[cleanPhone],
+        role: role || DEMO_ACCOUNTS[cleanPhone].role,
+      };
+      setUser(demoUser);
+      return demoUser;
+    }
+
+    // Generic fallback user (allows any 10-digit number for demonstration)
+    const genericUser = {
+      id: `user-${cleanPhone}`,
+      name: role === 'farmer' ? 'शेतकरी' : role === 'buyer' ? 'व्यापारी' : 'Admin',
+      phone: cleanPhone,
+      role: role || 'farmer',
+    };
+    setUser(genericUser);
+    return genericUser;
   }, []);
 
   const sendOtp = useCallback(async (phone, role) => {
-    try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, role }),
-      });
-
-      if (res.ok) {
-        return await res.json();
-      }
-
-      if (res.status === 404) {
-        // Fallback demo OTP response
-        return { success: true, message: 'OTP sent: 1234', otp: '1234' };
-      }
-
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Failed to send OTP');
-    } catch (err) {
-      // Offline fallback
-      return { success: true, message: 'OTP sent: 1234', otp: '1234' };
-    }
+    // Instant demo OTP delivery
+    return {
+      success: true,
+      message: 'OTP sent: 1234',
+      otp: '1234',
+    };
   }, []);
 
   const loginWithOtp = useCallback(async (phone, role, otp) => {
-    try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, role, otp }),
-      });
+    const cleanPhone = String(phone || '').trim();
+    const cleanOtp = String(otp || '').trim();
 
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-        return data.user;
-      }
-
-      if (res.status === 400 || res.status === 401) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'OTP verification failed');
-      }
-
-      if (res.status === 404) {
-        if (DEMO_ACCOUNTS[phone]) {
-          const demoUser = { ...DEMO_ACCOUNTS[phone], role: role || DEMO_ACCOUNTS[phone].role };
-          setUser(demoUser);
-          return demoUser;
-        }
-        const fallbackUser = {
-          id: `user-${Date.now()}`,
-          name: role === 'farmer' ? 'शेतकरी' : role === 'buyer' ? 'व्यापारी' : 'Admin',
-          phone,
-          role: role || 'farmer',
-        };
-        setUser(fallbackUser);
-        return fallbackUser;
-      }
-
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'OTP verification failed');
-    } catch (err) {
-      if (DEMO_ACCOUNTS[phone]) {
-        const demoUser = { ...DEMO_ACCOUNTS[phone], role: role || DEMO_ACCOUNTS[phone].role };
-        setUser(demoUser);
-        return demoUser;
-      }
-      throw err;
+    if (cleanOtp !== '1234' && cleanOtp.length !== 4) {
+      throw new Error('Invalid OTP. Please enter 1234');
     }
+
+    // Check registered
+    try {
+      const registered = JSON.parse(localStorage.getItem('aapliMandi_registered_users') || '[]');
+      const match = registered.find((u) => u.phone === cleanPhone && (!role || u.role === role));
+      if (match) {
+        const safe = { ...match };
+        delete safe.pin;
+        setUser(safe);
+        return safe;
+      }
+    } catch {}
+
+    if (DEMO_ACCOUNTS[cleanPhone]) {
+      const demoUser = {
+        ...DEMO_ACCOUNTS[cleanPhone],
+        role: role || DEMO_ACCOUNTS[cleanPhone].role,
+      };
+      setUser(demoUser);
+      return demoUser;
+    }
+
+    const fallbackUser = {
+      id: `user-${cleanPhone}`,
+      name: role === 'farmer' ? 'शेतकरी' : role === 'buyer' ? 'व्यापारी' : 'Admin',
+      phone: cleanPhone,
+      role: role || 'farmer',
+    };
+    setUser(fallbackUser);
+    return fallbackUser;
   }, []);
 
   const register = useCallback(async (userData) => {
+    const newUser = {
+      id: `user-${Date.now()}`,
+      full_name: userData.full_name || userData.name || 'नवीन वापरकर्ता',
+      name: userData.full_name || userData.name || 'नवीन वापरकर्ता',
+      ...userData,
+    };
+
+    // Store in localStorage
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData),
-      });
+      const registered = JSON.parse(localStorage.getItem('aapliMandi_registered_users') || '[]');
+      const updated = registered.filter(
+        (u) => !(u.phone === newUser.phone && u.role === newUser.role)
+      );
+      updated.push(newUser);
+      localStorage.setItem('aapliMandi_registered_users', JSON.stringify(updated));
+    } catch {}
 
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-        return data.user;
-      }
-
-      if (res.status === 400) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Registration failed');
-      }
-
-      if (res.status === 404) {
-        // Fallback for new user offline
-        const newUser = {
-          id: `user-${Date.now()}`,
-          ...userData,
-        };
-        delete newUser.pin;
-        setUser(newUser);
-        return newUser;
-      }
-
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Registration failed');
-    } catch (err) {
-      if (err.message && err.message !== 'Failed to fetch') {
-        throw err;
-      }
-      const newUser = {
-        id: `user-${Date.now()}`,
-        ...userData,
-      };
-      delete newUser.pin;
-      setUser(newUser);
-      return newUser;
-    }
+    const safe = { ...newUser };
+    delete safe.pin;
+    setUser(safe);
+    return safe;
   }, []);
 
   const logout = useCallback(() => {
